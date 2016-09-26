@@ -15,9 +15,10 @@
 package main
 
 import (
-	"github.com/coreos/rkt/common/apps"
+	"fmt"
 
 	"github.com/coreos/rkt/common"
+	"github.com/coreos/rkt/common/apps"
 	pkgPod "github.com/coreos/rkt/pkg/pod"
 	"github.com/coreos/rkt/rkt/image"
 	"github.com/coreos/rkt/stage0"
@@ -58,6 +59,7 @@ func runAppAdd(cmd *cobra.Command, args []string) (exit int) {
 		stderr.PrintE("error parsing app image arguments", err)
 		return 1
 	}
+
 	if rktApps.Count() > 1 {
 		stderr.Print("must give only one app")
 		return 1
@@ -102,6 +104,12 @@ func runAppAdd(cmd *cobra.Command, args []string) (exit int) {
 		return 1
 	}
 
+	podPID, err := p.ContainerPid1()
+	if err != nil {
+		stderr.PrintE(fmt.Sprintf("unable to determine the pid for pod %q", p.UUID), err)
+		return 1
+	}
+
 	ccfg := stage0.CommonConfig{
 		Store:     s,
 		TreeStore: ts,
@@ -115,17 +123,17 @@ func runAppAdd(cmd *cobra.Command, args []string) (exit int) {
 		rktgid = -1
 	}
 
-	pcfg := stage0.PrepareConfig{
+	cfg := stage0.AddConfig{
 		CommonConfig: &ccfg,
+		Image:        *img,
 		Apps:         &rktApps,
-	}
-	rcfg := stage0.RunConfig{
-		CommonConfig: &ccfg,
-		UseOverlay:   p.UsesOverlay(),
 		RktGid:       rktgid,
+		UsesOverlay:  p.UsesOverlay(),
+		PodPath:      p.Path(),
+		PodPID:       podPID,
 	}
 
-	err = stage0.AddApp(pcfg, rcfg, p.Path(), img)
+	err = stage0.AddApp(cfg)
 	if err != nil {
 		stderr.PrintE("error adding app to pod", err)
 		return 1
