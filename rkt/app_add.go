@@ -15,9 +15,6 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/appc/spec/schema/types"
 	"github.com/coreos/rkt/common/apps"
 
 	"github.com/coreos/rkt/common"
@@ -28,7 +25,6 @@ import (
 	"github.com/coreos/rkt/store/treestore"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var (
@@ -136,36 +132,4 @@ func runAppAdd(cmd *cobra.Command, args []string) (exit int) {
 	}
 
 	return 0
-}
-
-// generateAddConfig converts command line flags into stage0.AddConfig.
-func generateAddConfig(flags *pflag.FlagSet) (*stage0.AddConfig, error) {
-	var addConfig stage0.AddConfig
-
-	flag := flags.Lookup("name")
-	if flag != nil {
-		value := flag.Value.String()
-		if value != "" {
-			name, err := types.NewACName(value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid format for app name: %v", err)
-			}
-			addConfig.Name = name
-		}
-	}
-
-	flag = flags.Lookup("set-annotation")
-	if flag != nil {
-		var annotations types.Annotations
-		for k, value := range flag.Value.(*kvMap).mapping {
-			key, err := types.NewACIdentifier(k)
-			if err != nil {
-				return nil, fmt.Errorf("invalid format for annotation key %q: %v", k, err)
-			}
-			annotations.Set(*key, value)
-		}
-		addConfig.Annotations = annotations
-	}
-
-	return &addConfig, nil
 }
