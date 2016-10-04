@@ -42,29 +42,10 @@ import (
 // mountWrapper is a wrapper around a schema.Mount with an additional field indicating
 // whether it is an implicit empty volume converted from a Docker image.
 type mountWrapper struct {
-	schema.Mount
+	Mount          schema.Mount
+	Volume         *types.Volume
 	DockerImplicit bool
-}
-
-func isMPReadOnly(mountPoints []types.MountPoint, name types.ACName) bool {
-	for _, mp := range mountPoints {
-		if mp.Name == name {
-			return mp.ReadOnly
-		}
-	}
-
-	return false
-}
-
-// IsMountReadOnly returns if a mount should be readOnly.
-// If the readOnly flag in the pod manifest is not nil, it overrides the
-// readOnly flag in the image manifest.
-func IsMountReadOnly(vol types.Volume, mountPoints []types.MountPoint) bool {
-	if vol.ReadOnly != nil {
-		return *vol.ReadOnly
-	}
-
-	return isMPReadOnly(mountPoints, vol.Name)
+	ReadOnly       bool
 }
 
 func convertedFromDocker(im *schema.ImageManifest) bool {
@@ -76,27 +57,56 @@ func convertedFromDocker(im *schema.ImageManifest) bool {
 // GenerateMounts maps MountPoint paths to volumes, returning a list of mounts,
 // each with a parameter indicating if it's an implicit empty volume from a
 // Docker image.
-func GenerateMounts(ra *schema.RuntimeApp, volumes map[types.ACName]types.Volume, imageManifest *schema.ImageManifest) []mountWrapper {
+func GenerateMounts(ra *schema.RuntimeApp, podVolumes []types.Volume, imageManifest *schema.ImageManifest) ([]mountWrapper, error) {
 	app := ra.App
 
 	var genMnts []mountWrapper
 
+	vols := make(map[types.ACName]types.Volume)
+	for _, v := range podVolumes {
+		vols[v.Name] = v
+	}
+
+	// RuntimeApps have mounts, whereas Apps have mountPoints. mountPoints are partially for
+	// Docker compat; since apps can declare mountpoints. However, if we just run with rkt run,
+	// then we'lll only have a Mount and no corresponding MountPoint.
+	// Furthermore, Mounts can have embedded volumes in the case of the CRI.
+	// So, we generate a pile of Mounts and their corresponding Volume
+
+	// Map of hostpath -> Mount
 	mnts := make(map[string]schema.Mount)
+
+	// Check runtimeApp's Mounts
 	for _, m := range ra.Mounts {
 		mnts[m.Path] = m
+
+		vol := m.AppVolume // Mounts can supply a volume
+		if vol == nil {
+			vv, ok := vols[m.Volume]
+			if !ok {
+				return nil, fmt.Errorf("could not find volume %s", m.Volume)
+			}
+			vol = &vv
+		}
 		genMnts = append(genMnts,
 			mountWrapper{
 				Mount:          m,
 				DockerImplicit: false,
+				ReadOnly:       (vol.ReadOnly != nil && *vol.ReadOnly),
+				Volume:         vol,
 			})
 	}
 
+	// Now, match up MountPoints with Mounts or Volumes
+	// If there's no Mount and no Volume, generate an empty volume
 	for _, mp := range app.MountPoints {
-		// there's already an injected mount for this target path, skip
+		// there's already a Mount for this MountPoint, stop
 		if _, ok := mnts[mp.Path]; ok {
 			continue
 		}
-		vol, ok := volumes[mp.Name]
+
+		// No Mount, try to match based on volume name
+		vol, ok := vols[mp.Name]
 		// there is no volume for this mount point, creating an "empty" volume
 		// implicitly
 		if !ok {
@@ -118,13 +128,15 @@ func GenerateMounts(ra *schema.RuntimeApp, volumes map[types.ACName]types.Volume
 				log.Printf("Docker converted image, initializing implicit volume with data contained at the mount point %q.", mp.Name)
 			}
 
-			volumes[uniqName] = emptyVol
+			vols[uniqName] = emptyVol
 			genMnts = append(genMnts,
 				mountWrapper{
 					Mount: schema.Mount{
 						Volume: uniqName,
 						Path:   mp.Path,
 					},
+					Volume:         &emptyVol,
+					ReadOnly:       mp.ReadOnly,
 					DockerImplicit: dockerImplicit,
 				})
 		} else {
@@ -134,12 +146,21 @@ func GenerateMounts(ra *schema.RuntimeApp, volumes map[types.ACName]types.Volume
 						Volume: vol.Name,
 						Path:   mp.Path,
 					},
+					Volume:         &vol,
+					ReadOnly:       mp.ReadOnly,
 					DockerImplicit: false,
 				})
 		}
 	}
 
-	return genMnts
+	for _, gm := range genMnts {
+		if gm.Volume == nil {
+			log.Print(gm)
+			panic("gm.volume cannot be nil")
+		}
+	}
+
+	return genMnts, nil
 }
 
 // PrepareMountpoints creates and sets permissions for empty volumes.
@@ -259,12 +280,14 @@ func AppAddMounts(p *stage1commontypes.Pod, ra *schema.RuntimeApp, enterCmd []st
 	 */
 	ra.Mounts = append(ra.Mounts, schema.Mount{Volume: "foo", Path: "/mnt/hardcoded"})
 
-	mounts := GenerateMounts(ra, vols, imageManifest)
+	mounts, err := GenerateMounts(ra, p.Manifest.Volumes, imageManifest)
+	if err != nil {
+		log.FatalE("Could not generate mounts", err)
+		os.Exit(1)
+	}
+
 	for _, m := range mounts {
-		vol := vols[m.Volume]
-		/* TODO(alban): set readOnly correctly */
-		readOnly := true
-		AppAddOneMount(p, ra, vol.Source, m.Mount.Path, readOnly, enterCmd)
+		AppAddOneMount(p, ra, m.Volume.Source, m.Mount.Path, m.ReadOnly, enterCmd)
 	}
 }
 

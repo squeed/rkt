@@ -309,7 +309,7 @@ func FindBinPath(p *stage1commontypes.Pod, ra *schema.RuntimeApp) (string, error
 // node, we create a symlink to its target in "/rkt/volumes". Later,
 // prepare-app will copy those to "/dev/.rkt/" so that's what we use in the
 // DeviceAllow= line.
-func generateDeviceAllows(root string, appName types.ACName, mountPoints []types.MountPoint, mounts []mountWrapper, vols map[types.ACName]types.Volume, uidRange *user.UidRange) ([]string, error) {
+func generateDeviceAllows(root string, appName types.ACName, mountPoints []types.MountPoint, mounts []mountWrapper, uidRange *user.UidRange) ([]string, error) {
 	var devAllow []string
 
 	rktVolumeLinksPath := filepath.Join(root, "rkt", "volumes")
@@ -321,17 +321,17 @@ func generateDeviceAllows(root string, appName types.ACName, mountPoints []types
 	}
 
 	for _, m := range mounts {
-		v := vols[m.Volume]
+		v := *m.Volume
 		if v.Kind != "host" {
 			continue
 		}
 		if fileutil.IsDeviceNode(v.Source) {
 			mode := "r"
-			if !IsMountReadOnly(v, mountPoints) {
+			if !m.ReadOnly {
 				mode += "w"
 			}
 
-			tgt := filepath.Join(common.RelAppRootfsPath(appName), m.Path)
+			tgt := filepath.Join(common.RelAppRootfsPath(appName), m.Mount.Path)
 			// the DeviceAllow= line needs the link path in /dev/.rkt/
 			linkRel := filepath.Join("/dev/.rkt", v.Name.String())
 			// the real link should be in /rkt/volumes for now
@@ -484,9 +484,12 @@ func appToNspawnArgs(p *stage1commontypes.Pod, ra *schema.RuntimeApp, insecureOp
 	}
 
 	imageManifest := p.Images[appName.String()]
-	mounts := GenerateMounts(ra, vols, imageManifest)
+	mounts, err := GenerateMounts(ra, p.Manifest.Volumes, imageManifest)
+	if err != nil {
+		return nil, errwrap.Wrap(fmt.Errorf("could not generate app %q mounts", appName), err)
+	}
 	for _, m := range mounts {
-		vol := vols[m.Volume]
+		vol := *m.Volume
 
 		shPath := filepath.Join(sharedVolPath, vol.Name.String())
 
@@ -500,9 +503,9 @@ func appToNspawnArgs(p *stage1commontypes.Pod, ra *schema.RuntimeApp, insecureOp
 		// TODO(yifan): This is a temporary fix for systemd-nspawn not handling symlink mounts well.
 		// Could be removed when https://github.com/systemd/systemd/issues/2860 is resolved, and systemd
 		// version is bumped.
-		mntPath, err := EvaluateSymlinksInsideApp(appRootfs, m.Path)
+		mntPath, err := EvaluateSymlinksInsideApp(appRootfs, m.Mount.Path)
 		if err != nil {
-			return nil, errwrap.Wrap(fmt.Errorf("could not evaluate path %v", m.Path), err)
+			return nil, errwrap.Wrap(fmt.Errorf("could not evaluate path %v", m.Mount.Path), err)
 		}
 		mntAbsPath := filepath.Join(appRootfs, mntPath)
 
@@ -512,7 +515,7 @@ func appToNspawnArgs(p *stage1commontypes.Pod, ra *schema.RuntimeApp, insecureOp
 
 		opt := make([]string, 6)
 
-		if IsMountReadOnly(vol, app.MountPoints) {
+		if m.ReadOnly {
 			opt[0] = "--bind-ro="
 		} else {
 			opt[0] = "--bind="
