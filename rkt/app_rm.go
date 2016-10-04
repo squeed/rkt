@@ -79,6 +79,7 @@ func runAppRm(cmd *cobra.Command, args []string) (exit int) {
 		CommonConfig: &ccfg,
 		UsesOverlay:  p.UsesOverlay(),
 		AppName:      appName,
+		PodPath:      p.Path(),
 		PodPID:       podPID,
 	}
 
