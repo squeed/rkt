@@ -57,11 +57,10 @@ func init() {
 	cmdAppSandbox.Flags().Var(&flagDNSOpt, "dns-opt", "DNS options to write in /etc/resolv.conf")
 	cmdAppSandbox.Flags().StringVar(&flagHostname, "hostname", "", `pod's hostname. If empty, it will be "rkt-$PODUUID"`)
 	cmdAppSandbox.Flags().Var(&flagAppPorts, "port", "ports to forward. format: \"name:proto:podPort:hostIP:hostPort\"")
-	cmdAppSandbox.Flags().Var((*appsVolume)(&rktApps), "volume", "volumes to make available in the pod")
 
 	flagAppPorts = appPortList{}
-	cmdAppSandbox.Flags().Var(&flagAnnotations, "annotation", "optional, set the pod's annotations in the form of key=value")
-	cmdAppSandbox.Flags().Var(&flagLabels, "label", "optional, set the pod's label in the form of key=value")
+	cmdAppSandbox.Flags().Var(&flagAnnotations, "user-annotation", "optional, set the pod's annotations in the form of key=value")
+	cmdAppSandbox.Flags().Var(&flagLabels, "user-label", "optional, set the pod's label in the form of key=value")
 }
 
 func runAppSandbox(cmd *cobra.Command, args []string) int {
@@ -140,8 +139,8 @@ func runAppSandbox(cmd *cobra.Command, args []string) int {
 		SkipTreeStoreCheck: globalFlags.InsecureFlags.SkipOnDiskCheck(),
 		Apps:               &rktApps,
 		Ports:              []types.ExposedPort(flagAppPorts),
-		CRIAnnotations:     parseAnnotations(&flagAnnotations),
-		CRILabels:          parseLabels(&flagLabels),
+		UserAnnotations:    parseAnnotations(&flagAnnotations),
+		UserLabels:         parseLabels(&flagLabels),
 	}
 
 	if globalFlags.Debug {
@@ -295,7 +294,7 @@ func (apl *appPortList) Type() string {
 	return "appPortList"
 }
 
-// parseAnnotations converts the annotations set by '--set-annotation' flag,
+// parseAnnotations converts the annotations set by '--user-annotation' flag,
 // and returns types.CRIAnnotations.
 func parseAnnotations(flagAnnotations *kvMap) types.CRIAnnotations {
 	if flagAnnotations.IsEmpty() {
@@ -308,7 +307,7 @@ func parseAnnotations(flagAnnotations *kvMap) types.CRIAnnotations {
 	return annotations
 }
 
-// parseLabels converts the labels set by '--set-label' flag,
+// parseLabels converts the labels set by '--user-label' flag,
 // and returns types.CRILabels.
 func parseLabels(flagLabels *kvMap) types.CRILabels {
 	if flagLabels.IsEmpty() {
