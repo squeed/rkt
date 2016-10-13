@@ -46,6 +46,8 @@ import (
 
 	"github.com/coreos/rkt/common"
 	"github.com/coreos/rkt/common/cgroup"
+	"github.com/coreos/rkt/common/cgroup/v1"
+	"github.com/coreos/rkt/common/cgroup/v2"
 	commonnet "github.com/coreos/rkt/common/networking"
 	"github.com/coreos/rkt/networking"
 	pkgflag "github.com/coreos/rkt/pkg/flag"
@@ -656,7 +658,7 @@ func stage1() int {
 	}
 
 	if !unifiedCgroup {
-		enabledCgroups, err := cgroup.GetEnabledV1Cgroups()
+		enabledCgroups, err := v1.GetEnabledCgroups()
 		if err != nil {
 			log.FatalE("error getting v1 cgroups", err)
 			return 1
@@ -712,9 +714,9 @@ func stage1() int {
 }
 
 func areHostV1CgroupsMounted(enabledV1Cgroups map[int][]string) bool {
-	controllers := cgroup.GetV1ControllerDirs(enabledV1Cgroups)
+	controllers := v1.GetControllerDirs(enabledV1Cgroups)
 	for _, c := range controllers {
-		if !cgroup.IsV1ControllerMounted(c) {
+		if !v1.IsControllerMounted(c) {
 			return false
 		}
 	}
@@ -731,12 +733,12 @@ func mountHostV1Cgroups(enabledCgroups map[int][]string) error {
 	systemdControllerPath := "/sys/fs/cgroup/systemd"
 	if !areHostV1CgroupsMounted(enabledCgroups) {
 		mountContext := os.Getenv(common.EnvSELinuxMountContext)
-		if err := cgroup.CreateV1Cgroups("/", enabledCgroups, mountContext); err != nil {
+		if err := v1.CreateCgroups("/", enabledCgroups, mountContext); err != nil {
 			return errwrap.Wrap(errors.New("error creating host cgroups"), err)
 		}
 	}
 
-	if !cgroup.IsV1ControllerMounted("systemd") {
+	if !v1.IsControllerMounted("systemd") {
 		if err := os.MkdirAll(systemdControllerPath, 0700); err != nil {
 			return err
 		}
@@ -753,10 +755,10 @@ func mountHostV1Cgroups(enabledCgroups map[int][]string) error {
 // read-write so systemd inside stage1 can apply isolators to them
 func mountContainerV1Cgroups(s1Root string, enabledCgroups map[int][]string, subcgroup string, serviceNames []string) error {
 	mountContext := os.Getenv(common.EnvSELinuxMountContext)
-	if err := cgroup.CreateV1Cgroups(s1Root, enabledCgroups, mountContext); err != nil {
+	if err := v1.CreateCgroups(s1Root, enabledCgroups, mountContext); err != nil {
 		return errwrap.Wrap(errors.New("error creating container cgroups"), err)
 	}
-	if err := cgroup.RemountV1CgroupsRO(s1Root, enabledCgroups, subcgroup, serviceNames); err != nil {
+	if err := v1.RemountCgroupsRO(s1Root, enabledCgroups, subcgroup, serviceNames); err != nil {
 		return errwrap.Wrap(errors.New("error restricting container cgroups"), err)
 	}
 
@@ -798,14 +800,14 @@ func getContainerSubCgroup(machineID string, canMachinedRegister, unified bool) 
 		} else {
 			if unified {
 				var err error
-				subcgroup, err = cgroup.GetOwnV2CgroupPath()
+				subcgroup, err = v2.GetOwnCgroupPath()
 				if err != nil {
 					return "", errwrap.Wrap(errors.New("could not get own v2 cgroup path"), err)
 				}
 			} else {
 				// when registration is disabled the container will be directly
 				// under the current cgroup so we can look it up in /proc/self/cgroup
-				ownV1CgroupPath, err := cgroup.GetOwnV1CgroupPath("name=systemd")
+				ownV1CgroupPath, err := v1.GetOwnCgroupPath("name=systemd")
 				if err != nil {
 					return "", errwrap.Wrap(errors.New("could not get own v1 cgroup path"), err)
 				}
@@ -813,7 +815,7 @@ func getContainerSubCgroup(machineID string, canMachinedRegister, unified bool) 
 				// we want all rkt instances to be in distinct cgroups. Create a
 				// subcgroup and add ourselves to it.
 				subcgroup = filepath.Join(ownV1CgroupPath, machineDir)
-				if err := cgroup.JoinV1Subcgroup("systemd", subcgroup); err != nil {
+				if err := v1.JoinSubcgroup("systemd", subcgroup); err != nil {
 					return "", errwrap.Wrap(fmt.Errorf("error joining %s subcgroup", ownV1CgroupPath), err)
 				}
 			}

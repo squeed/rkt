@@ -26,6 +26,7 @@ import (
 
 	"github.com/coreos/go-systemd/unit"
 	"github.com/coreos/rkt/common/cgroup"
+	"github.com/coreos/rkt/common/cgroup/v1"
 	rktlog "github.com/coreos/rkt/pkg/log"
 	stage1types "github.com/coreos/rkt/stage1/common/types"
 	stage1initcommon "github.com/coreos/rkt/stage1/init/common"
@@ -108,7 +109,7 @@ func main() {
 	}
 
 	if !isUnified {
-		enabledCgroups, err := cgroup.GetEnabledV1Cgroups()
+		enabledCgroups, err := v1.GetEnabledCgroups()
 		if err != nil {
 			log.FatalE("error getting cgroups", err)
 			os.Exit(1)
@@ -119,7 +120,7 @@ func main() {
 			subcgroup := string(b)
 			serviceName := stage1initcommon.ServiceUnitName(ra.Name)
 
-			if err := cgroup.RemountCgroupKnobsRW(enabledCgroups, subcgroup, serviceName, enterCmd); err != nil {
+			if err := v1.RemountCgroupKnobsRW(enabledCgroups, subcgroup, serviceName, enterCmd); err != nil {
 				log.FatalE("error restricting container cgroups", err)
 				os.Exit(1)
 			}
