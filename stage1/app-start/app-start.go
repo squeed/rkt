@@ -49,10 +49,16 @@ func main() {
 		diag.SetOutput(ioutil.Discard)
 	}
 
+	uuid, err := types.NewUUID(flag.Arg(0))
+	if err != nil {
+		log.PrintE("UUID is missing or malformed", err)
+		os.Exit(254)
+	}
+
 	appName, err := types.NewACName(flag.Arg(1))
 	if err != nil {
 		log.PrintE("invalid app name", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	enterCmd := []string{flag.Arg(2)}
@@ -70,7 +76,7 @@ func main() {
 
 	if err := cmd.Run(); err != nil {
 		log.PrintE(fmt.Sprintf("error starting app %q", appName.String()), err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	os.Exit(0)

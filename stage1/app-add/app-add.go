@@ -66,13 +66,13 @@ func main() {
 	uuid, err := types.NewUUID(flag.Arg(0))
 	if err != nil {
 		log.PrintE("UUID is missing or malformed", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	appName, err := types.NewACName(flag.Arg(1))
 	if err != nil {
 		log.PrintE("invalid app name", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	enterCmd := []string{flag.Arg(2)}
@@ -82,7 +82,7 @@ func main() {
 	p, err := stage1types.LoadPod(root, uuid)
 	if err != nil {
 		log.PrintE("failed to load pod", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	insecureOptions := stage1initcommon.Stage1InsecureOptions{
@@ -94,7 +94,7 @@ func main() {
 	ra := p.Manifest.Apps.Get(*appName)
 	if ra == nil {
 		log.Printf("failed to get app")
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	if ra.App.WorkingDirectory == "" {
@@ -105,14 +105,14 @@ func main() {
 	isUnified, err := cgroup.IsCgroupUnified("/")
 	if err != nil {
 		log.FatalE("failed to determine the cgroup version", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	if !isUnified {
 		enabledCgroups, err := v1.GetEnabledCgroups()
 		if err != nil {
 			log.FatalE("error getting cgroups", err)
-			os.Exit(1)
+			os.Exit(254)
 		}
 
 		b, err := ioutil.ReadFile(filepath.Join(p.Root, "subcgroup"))
@@ -122,7 +122,7 @@ func main() {
 
 			if err := v1.RemountCgroupKnobsRW(enabledCgroups, subcgroup, serviceName, enterCmd); err != nil {
 				log.FatalE("error restricting container cgroups", err)
-				os.Exit(1)
+				os.Exit(254)
 			}
 		} else {
 			log.PrintE("continuing with per-app isolators disabled", err)
@@ -135,7 +135,7 @@ func main() {
 	binPath, err := stage1initcommon.FindBinPath(p, ra)
 	if err != nil {
 		log.PrintE("failed to find bin path", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	w := stage1initcommon.NewUnitWriter(p)
@@ -151,7 +151,7 @@ func main() {
 
 	if err := w.Error(); err != nil {
 		log.PrintE("error generating app units", err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	args := enterCmd
@@ -165,7 +165,7 @@ func main() {
 
 	if err := cmd.Run(); err != nil {
 		log.PrintE(`error executing "systemctl daemon-reload"`, err)
-		os.Exit(1)
+		os.Exit(254)
 	}
 
 	os.Exit(0)
