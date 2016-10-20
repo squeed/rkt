@@ -49,12 +49,6 @@ func main() {
 		diag.SetOutput(ioutil.Discard)
 	}
 
-	uuid, err := types.NewUUID(flag.Arg(0))
-	if err != nil {
-		log.PrintE("UUID is missing or malformed", err)
-		os.Exit(254)
-	}
-
 	appName, err := types.NewACName(flag.Arg(1))
 	if err != nil {
 		log.PrintE("invalid app name", err)
