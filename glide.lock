@@ -1,5 +1,5 @@
-hash: 88224391c1497feeb57991075fe6bf1c8efe8b06f501543f2bf2d802d67b0e7e
-updated: 2016-10-24T13:58:49.082453394+02:00
+hash: d3847b9cdebd66d48f226ee62bcb2d0c6af8fcd04779e76dc47bb62385684077
+updated: 2016-10-26T14:45:56.074048908+02:00
 imports:
 - name: github.com/appc/docker2aci
   version: 15d68b33bfee95a448c4da37dbe876baa8fcb5b6
@@ -206,6 +206,8 @@ imports:
   version: 19b0b332c9e4516a6370a0456e6182c3b5036720
 - name: github.com/klauspost/pgzip
   version: 95e8170c5d4da28db9c64dfc9ec3138ea4466fd4
+- name: github.com/kr/pretty
+  version: cfb55aafdaf3ec08f0db22699ab822c50091b1c4
 - name: github.com/kr/pty
   version: f7ee69f31298ecbe5d2b349c711e2547a617d398
 - name: github.com/pborman/uuid
@@ -297,4 +299,6 @@ imports:
   - pkg/api/resource
   - pkg/conversion
   - third_party/forked/reflect
-testImports: []
+testImports:
+- name: github.com/kr/text
+  version: 7cafcd837844e784b526369c9bce262804aebc60
