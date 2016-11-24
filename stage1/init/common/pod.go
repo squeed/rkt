@@ -736,6 +736,18 @@ func getAppNoNewPrivileges(isolators types.Isolators) bool {
 	return false
 }
 
+//getSelinuxLabel will return the SELinux label as a string, if the app
+//has the appropriate isolator. If not, it returns empty string
+func getAppSELinuxLabel(isolators types.Isolators) string {
+	for _, isolator := range isolators {
+		ctx, ok := isolator.Value().(*types.LinuxSELinuxContext)
+		if ok && ctx != nil {
+			return fmt.Sprintf("%s:%s:%s:%s", ctx.User(), ctx.Role(), ctx.Type(), ctx.Level())
+		}
+	}
+	return ""
+}
+
 // protectKernelTunables restricts access to some security-sensitive paths under
 // /proc and /sys. Entries are either hidden or just made read-only to app.
 // This protection is enabled by default.

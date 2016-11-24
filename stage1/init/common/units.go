@@ -306,21 +306,12 @@ func (uw *UnitWriter) AppUnit(ra *schema.RuntimeApp, binPath string, opts ...*un
 		return
 	}
 
-	env := app.Environment
-
-	env.Set("AC_APP_NAME", appName.String())
+	app.Environment.Set("AC_APP_NAME", appName.String())
 	if uw.p.MetadataServiceURL != "" {
-		env.Set("AC_METADATA_URL", uw.p.MetadataServiceURL)
+		app.Environment.Set("AC_METADATA_URL", uw.p.MetadataServiceURL)
 	}
 
-	envFilePath := EnvFilePath(uw.p.Root, appName)
-
-	if err := common.WriteEnvFile(env, &uw.p.UidRange, envFilePath); err != nil {
-		uw.err = errwrap.Wrap(errors.New("unable to wr*stage1common.Podite environment file for systemd"), err)
-		return
-	}
-
-	u, g, err := parseUserGroup(uw.p, ra, &uw.p.UidRange)
+	u, g, err := parseUserGroup(uw.p, ra)
 	if err != nil {
 		uw.err = err
 		return
@@ -339,6 +330,12 @@ func (uw *UnitWriter) AppUnit(ra *schema.RuntimeApp, binPath string, opts ...*un
 	capabilitiesStr, err := getAppCapabilities(app.Isolators)
 	if err != nil {
 		uw.err = err
+		return
+	}
+
+	envFilePath := EnvFilePath(uw.p.Root, appName)
+	if err := common.WriteEnvFile(app.Environment, &uw.p.UidRange, envFilePath); err != nil {
+		uw.err = errwrap.Wrap(errors.New("unable to write environment file for systemd"), err)
 		return
 	}
 
@@ -588,6 +585,18 @@ func (uw *UnitWriter) AppUnit(ra *schema.RuntimeApp, binPath string, opts ...*un
 
 	uw.WriteUnit(ServiceUnitPath(uw.p.Root, appName), "failed to create service unit file", opts...)
 	uw.Activate(ServiceUnitName(appName), ServiceWantPath(uw.p.Root, appName))
+}
+
+// XXX(cdc) implement me
+func (uw *UnitWriter) AppRuncUnit(ra *schema.RuntimeApp, binPath string, opts ...*unit.UnitOption) {
+	uid, gid, err := parseUserGroup(uw.p, ra)
+	spec, err := GenerateRuncSpec(ra, uid, gid)
+	_ = spec
+	if err != nil {
+		uw.err = errwrap.Wrap(errors.New("failed to generate runc spec"), err)
+		return
+	}
+
 }
 
 // AppReaperUnit writes an app reaper service unit for the given app in the given path using the given unit options.
