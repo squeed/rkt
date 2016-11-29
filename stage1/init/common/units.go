@@ -320,7 +320,7 @@ func (uw *UnitWriter) AppUnit(ra *schema.RuntimeApp, binPath string, opts ...*un
 		return
 	}
 
-	u, g, err := parseUserGroup(uw.p, ra)
+	u, g, err := parseUserGroup(uw.p, ra, &uw.p.UidRange)
 	if err != nil {
 		uw.err = err
 		return
