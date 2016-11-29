@@ -30,7 +30,6 @@ import (
 	"github.com/appc/spec/schema/types"
 	"github.com/coreos/rkt/common"
 	"github.com/coreos/rkt/common/cgroup"
-	"github.com/coreos/rkt/pkg/user"
 	stage1commontypes "github.com/coreos/rkt/stage1/common/types"
 
 	"github.com/coreos/go-systemd/unit"
@@ -89,7 +88,7 @@ func MutableEnv(p *stage1commontypes.Pod) error {
 	return w.Error()
 }
 
-func ImmutableEnv(p *stage1commontypes.Pod, interactive bool, privateUsers string, insecureOptions Stage1InsecureOptions) error {
+func ImmutableEnv(p *stage1commontypes.Pod, interactive bool) error {
 	w := NewUnitWriter(p)
 
 	opts := []*unit.UnitOption{
@@ -168,7 +167,7 @@ func ImmutableEnv(p *stage1commontypes.Pod, interactive bool, privateUsers strin
 			opts = append(opts, unit.NewUnitOption("Service", "StandardOutput", "journal+console"))
 			opts = append(opts, unit.NewUnitOption("Service", "StandardError", "journal+console"))
 		}
-		w.AppUnit(ra, binPath, privateUsers, insecureOptions, opts...)
+		w.AppUnit(ra, binPath, opts...)
 
 		w.AppReaperUnit(ra.Name, binPath,
 			unit.NewUnitOption("Unit", "Wants", "shutdown.service"),
@@ -280,10 +279,7 @@ func (uw *UnitWriter) Error() error {
 	return uw.err
 }
 
-func (uw *UnitWriter) AppUnit(
-	ra *schema.RuntimeApp, binPath, privateUsers string, insecureOptions Stage1InsecureOptions,
-	opts ...*unit.UnitOption,
-) {
+func (uw *UnitWriter) AppUnit(ra *schema.RuntimeApp, binPath string, opts ...*unit.UnitOption) {
 	if uw.err != nil {
 		return
 	}
@@ -319,24 +315,18 @@ func (uw *UnitWriter) AppUnit(
 
 	envFilePath := EnvFilePath(uw.p.Root, appName)
 
-	uidRange := user.NewBlankUidRange()
-	if err := uidRange.Deserialize([]byte(privateUsers)); err != nil {
-		uw.err = err
+	if err := common.WriteEnvFile(env, &uw.p.UidRange, envFilePath); err != nil {
+		uw.err = errwrap.Wrap(errors.New("unable to wr*stage1common.Podite environment file for systemd"), err)
 		return
 	}
 
-	if err := common.WriteEnvFile(env, uidRange, envFilePath); err != nil {
-		uw.err = errwrap.Wrap(errors.New("unable to write environment file for systemd"), err)
-		return
-	}
-
-	u, g, err := parseUserGroup(uw.p, ra, uidRange)
+	u, g, err := parseUserGroup(uw.p, ra)
 	if err != nil {
 		uw.err = err
 		return
 	}
 
-	if err := generateSysusers(uw.p, ra, u, g, uidRange); err != nil {
+	if err := generateSysusers(uw.p, ra, u, g, &uw.p.UidRange); err != nil {
 		uw.err = errwrap.Wrap(errors.New("unable to generate sysusers"), err)
 		return
 	}
@@ -381,14 +371,14 @@ func (uw *UnitWriter) AppUnit(
 		opts = append(opts, unit.NewUnitOption("Service", "Type", "notify"))
 	}
 
-	if !insecureOptions.DisableCapabilities {
+	if !uw.p.InsecureOptions.Capabilities {
 		opts = append(opts, unit.NewUnitOption("Service", "CapabilityBoundingSet", strings.Join(capabilitiesStr, " ")))
 	}
 
 	// Apply seccomp isolator, if any and not opt-ing out;
 	// see https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SystemCallFilter=
 	noNewPrivileges := getAppNoNewPrivileges(app.Isolators)
-	if !insecureOptions.DisableSeccomp {
+	if !uw.p.InsecureOptions.Seccomp {
 		var forceNoNewPrivileges bool
 
 		unprivileged := (u != 0)
@@ -428,7 +418,7 @@ func (uw *UnitWriter) AppUnit(
 		opts = appendOptionsList(opts, "Service", "ReadOnlyDirectories", "", common.RelAppRootfsPath(ra.Name))
 	}
 
-	if !insecureOptions.DisablePaths {
+	if !uw.p.InsecureOptions.Paths {
 		// Restrict access to sensitive paths (eg. procfs and sysfs entries).
 		opts = protectKernelTunables(opts, appName, systemdVersion)
 
@@ -439,9 +429,9 @@ func (uw *UnitWriter) AppUnit(
 
 	// Generate default device policy for the app, as well as the list of allowed devices.
 	// For kvm flavor, devices are VM-specific and restricting them is not strictly needed.
-	if !insecureOptions.DisablePaths && flavor != "kvm" {
+	if !uw.p.InsecureOptions.Paths && flavor != "kvm" {
 		opts = append(opts, unit.NewUnitOption("Service", "DevicePolicy", "closed"))
-		deviceAllows, err := generateDeviceAllows(common.Stage1RootfsPath(podAbsRoot), appName, app.MountPoints, mounts, uidRange)
+		deviceAllows, err := generateDeviceAllows(common.Stage1RootfsPath(podAbsRoot), appName, app.MountPoints, mounts, &uw.p.UidRange)
 		if err != nil {
 			uw.err = err
 			return
