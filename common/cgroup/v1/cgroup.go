@@ -188,12 +188,6 @@ func JoinSubcgroup(controller string, subcgroup string) error {
 //
 // cpuSetPath should be <stage1rootfs>/sys/fs/cgroup/cpuset
 func fixCpusetKnobs(cpusetPath, subcgroup, knob string) error {
-	if err := os.MkdirAll(filepath.Join(cpusetPath, subcgroup), 0755); err != nil {
-		return err
-	}
-
-	dirs := filepath.SplitList(subcgroup)
-
 	// Loop over every entry in the hierarchy, putting in the parent's value
 	// unless there is one already there.
 	// Read from the root knob
@@ -205,10 +199,11 @@ func fixCpusetKnobs(cpusetPath, subcgroup, knob string) error {
 
 	// Loop over every directory in the subcgroup path
 	currDir := cpusetPath
-	for _, dir := range dirs {
+	for _, dir := range strings.Split(subcgroup, "/") {
 		currDir = filepath.Join(currDir, dir)
 
 		childFile := filepath.Join(currDir, knob)
+
 		childData, err := ioutil.ReadFile(childFile)
 		if err != nil {
 			return errwrap.Wrapf("error reading cgroup "+childFile, err)
@@ -336,10 +331,13 @@ func RemountCgroups(m fs.Mounter, root string, enabledCgroups map[int][]string, 
 		syscall.MS_NOEXEC |
 		syscall.MS_NODEV
 
+	// systemd runs all processes in the system.slice
+	subcgroup = filepath.Join(subcgroup, "system.slice")
+
 	// Mount RW the controllers for this pod
 	for _, c := range controllers {
 		cPath := filepath.Join(cgroupTmpfs, c)
-		subcgroupPath := filepath.Join(cPath, subcgroup, "system.slice")
+		subcgroupPath := filepath.Join(cPath, subcgroup)
 
 		if err := os.MkdirAll(subcgroupPath, 0755); err != nil {
 			return err
@@ -356,8 +354,10 @@ func RemountCgroups(m fs.Mounter, root string, enabledCgroups map[int][]string, 
 		}
 
 		// Re-mount controller read-only to prevent the container modifying host controllers
-		if err := mountFsRO(m, cPath, flags); err != nil {
-			return err
+		if !readWrite {
+			if err := mountFsRO(m, cPath, flags); err != nil {
+				return err
+			}
 		}
 	}
 
